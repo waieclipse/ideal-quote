@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IDEAL DESIGN | 智慧報價與自動發信系統</title>
+    
+    <!-- 引入核心套件 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- 1. 新增 EmailJS 插件 (自動發信關鍵) -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&family=Noto+Sans+TC:wght@300;400;700;900&display=swap');
+
+        :root {
+            --accent: #E87018; 
+            --dark: #000000;
+            --gray-bg: #121212;
+            --border-muted: #333;
+            --text-dim: #999;
+        }
+
+        body {
+            background-color: #000;
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            margin: 0; padding: 40px 20px;
+            display: flex; flex-direction: column; align-items: center;
+        }
+
+        /* --- 操作面板 --- */
+        .admin-panel {
+            width: 100%; max-width: 550px; background: var(--gray-bg); padding: 40px;
+            border-radius: 16px; color: #FFF; box-shadow: 0 40px 80px rgba(0,0,0,0.6);
+            margin-bottom: 60px;
+        }
+        .admin-panel h2 { font-weight: 900; letter-spacing: 1px; margin-bottom: 35px; text-align: center; font-size: 22px; }
+        
+        .input-group { margin-bottom: 25px; }
+        .input-group label { display: block; font-size: 10px; color: #666; margin-bottom: 8px; letter-spacing: 1.5px; font-weight: 700; text-transform: uppercase; }
+        .admin-panel input {
+            width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--border-muted);
+            color: #FFF; padding: 10px 0; font-size: 15px; transition: 0.3s; box-sizing: border-box;
+        }
+        .admin-panel input:focus { border-color: var(--accent); outline: none; }
+
+        .option-grid { display: grid; gap: 10px; margin-top: 10px; }
+        .box {
+            padding: 15px 20px; border: 1px solid var(--border-muted); border-radius: 8px; cursor: pointer;
+            display: flex; justify-content: space-between; align-items: center; transition: 0.2s; font-size: 14px;
+        }
+        .box.active { border-color: var(--accent); background: rgba(232, 112, 24, 0.1); }
+        .box .price { color: var(--accent); font-weight: 700; }
+
+        .btn-main {
+            width: 100%; background: var(--accent); color: white; border: none;
+            padding: 18px; border-radius: 8px; font-weight: 800; font-size: 14px;
+            cursor: pointer; margin-top: 35px; letter-spacing: 1px; transition: 0.3s;
+        }
+        .btn-main:hover { opacity: 0.9; transform: translateY(-2px); }
+        .btn-main:disabled { background: #444; cursor: not-allowed; }
+
+        /* --- PDF 正式樣板 --- */
+        #pdf-template {
+            position: absolute; left: -9999px; top: 0;
+            width: 794px; height: 1123px; background: #FFFFFF; color: var(--dark);
+            padding: 90px 80px; box-sizing: border-box; display: flex; flex-direction: column;
+        }
+
+        .pdf-header {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            border-bottom: 1.5px solid var(--dark); padding-bottom: 30px; margin-bottom: 50px;
+        }
+        .pdf-logo h1 { font-size: 28px; font-weight: 900; letter-spacing: 4px; margin: 0; line-height: 1; }
+        .pdf-logo p { font-size: 10px; color: var(--accent); letter-spacing: 2.5px; font-weight: 700; margin-top: 10px; text-transform: uppercase; }
+        
+        .pdf-meta { text-align: right; font-size: 11px; color: #888; line-height: 1.6; }
+        .pdf-meta b { color: var(--dark); font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; }
+
+        .pdf-client { margin-bottom: 70px; }
+        .pdf-label { font-size: 10px; font-weight: 800; color: var(--accent); letter-spacing: 1.5px; margin-bottom: 12px; text-transform: uppercase; }
+        .pdf-client-name { font-size: 44px; font-weight: 900; margin: 0; letter-spacing: -1px; line-height: 1; }
+        .pdf-client-email { font-size: 14px; color: #888; margin-top: 8px; }
+
+        .pdf-table { width: 100%; border-collapse: collapse; margin-bottom: 40px; }
+        .pdf-table th { 
+            text-align: left; font-size: 11px; padding: 15px 0; 
+            border-bottom: 1px solid #EEE; color: var(--text-dim); letter-spacing: 1px; font-weight: 700;
+        }
+        .pdf-table th.col-right { text-align: right; }
+        .pdf-table td { padding: 25px 0; font-size: 16px; border-bottom: 1px solid #F5F5F5; }
+        .col-right { text-align: right; font-weight: 700; font-size: 18px; }
+
+        .pdf-total-wrap { display: flex; flex-direction: column; align-items: flex-end; margin-bottom: 90px; }
+        .pdf-total-label { font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 10px; letter-spacing: 1px; }
+        .pdf-total-amount { font-size: 52px; font-weight: 900; color: var(--dark); letter-spacing: -1.5px; line-height: 1; }
+        .pdf-total-amount span { font-size: 22px; vertical-align: middle; margin-right: 10px; color: var(--accent); }
+
+        .pdf-terms { margin-top: 20px; }
+        .pdf-terms-title { 
+            display: inline-block; background: var(--dark); color: #FFF;
+            font-size: 10px; font-weight: 800; padding: 6px 14px; letter-spacing: 1.5px; margin-bottom: 25px;
+            text-transform: uppercase;
+        }
+        .terms-list { margin: 0; padding: 0; list-style: none; }
+        .terms-list li { 
+            font-size: 12px; color: #444; line-height: 2; border-bottom: 1px solid #F9F9F9; padding: 10px 0;
+            display: flex; align-items: flex-start;
+        }
+        .terms-list b { color: var(--dark); width: 35px; flex-shrink: 0; }
+
+        .pdf-footer { 
+            position: absolute; bottom: 65px; left: 0; right: 0;
+            text-align: center; font-size: 11px; letter-spacing: 8px; 
+            color: #CCC; font-weight: 400; text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+<div class="admin-panel">
+    <h2>智慧報價發信系統</h2>
+    
+    <div class="input-group">
+        <label>客戶名稱 / CLIENT NAME</label>
+        <input type="text" id="inputName" placeholder="請輸入對象稱呼">
+    </div>
+
+    <div class="input-group">
+        <label>電子郵件 / EMAIL (必填，將發送報價單至此)</label>
+        <input type="email" id="inputEmail" placeholder="收件人信箱">
+    </div>
+
+    <div class="input-group">
+        <label>1. 選擇方案 / SELECT PLAN</label>
+        <div class="option-grid">
+            <div class="box plan" onclick="selectPlan(10000, '企業全案規劃 (Premium Branding)', this)">
+                <span>企業全案規劃</span><span class="price">$10,000</span>
+            </div>
+            <div class="box plan" onclick="selectPlan(8000, '商業品牌方案 (Pro)', this)">
+                <span>商業品牌方案</span><span class="price">$8,000</span>
+            </div>
+            <div class="box plan" onclick="selectPlan(6000, '經典識別方案 (Classic)', this)">
+                <span>經典識別方案</span><span class="price">$6,000</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="input-group">
+        <label>2. 加購服務 / ADD-ONS</label>
+        <div class="option-grid">
+            <div class="box addon" onclick="toggleAddon(1500, '名片設計 (單面)', this)">
+                <span>名片設計 (單面)</span><span class="price">+$1,500</span>
+            </div>
+            <div class="box addon" onclick="toggleAddon(2000, '名片設計 (雙面)', this)">
+                <span>名片設計 (雙面)</span><span class="price">+$2,000</span>
+            </div>
+            <div class="box addon" onclick="toggleAddon(2000, '急件處理 (12H Express)', this)">
+                <span>急件處理 (12H)</span><span class="price">+$2,000</span>
+            </div>
+        </div>
+    </div>
+    
+    <button class="btn-main" id="genBtn" onclick="fullAutomationProcess()">生成報價單並自動寄信給客戶 🚀</button>
+</div>
+
+<div id="pdf-template">
+    <!-- PDF 內容保持不變，與您提供的樣式一致 -->
+    <div class="pdf-header">
+        <div class="pdf-logo">
+            <h1>IDEAL DESIGN</h1>
+            <p>Creative Strategy Studio</p>
+        </div>
+        <div class="pdf-meta">
+            <b>Official Quotation</b><br>
+            NO: #ID-2026-001<br>
+            DATE: <span id="pdfDate"></span><br>
+            VALID: 14 Days
+        </div>
+    </div>
+    
+    <div class="pdf-client">
+        <div class="pdf-label">Prepared For</div>
+        <h2 class="pdf-client-name" id="pdfName">CLIENT NAME</h2>
+        <div class="pdf-client-email" id="pdfEmail">---</div>
+    </div>
+
+    <table class="pdf-table">
+        <thead>
+            <tr>
+                <th>項目描述 DESCRIPTION</th>
+                <th class="col-right">金額 TOTAL (TWD)</th>
+            </tr>
+        </thead>
+        <tbody id="pdfItemsBody"></tbody>
+    </table>
+    
+    <div class="pdf-total-wrap">
+        <div class="pdf-total-label">預算總計 ESTIMATED TOTAL</div>
+        <div class="pdf-total-amount"><span>NT$</span><span id="pdfTotal">0</span></div>
+    </div>
+
+    <div class="pdf-terms">
+        <div class="pdf-terms-title">Terms & Conditions 服務須知</div>
+        <ul class="terms-list">
+            <li><b>01</b> 效力：本報價單由智慧自動化系統生成，最終規格與條款請以正式簽署之設計合約為準。</li>
+            <li><b>02</b> 時程：確認合作後請回覆本郵件，我們將為您安排專屬設計師對接與正式開工排程。</li>
+            <li><b>03</b> 版權：本專案所有設計之商業版權於尾款結清後，正式由艾迪兒創意設計轉讓予客戶。</li>
+        </ul>
+    </div>
+
+    <div class="pdf-footer">STRATEGY &nbsp; | &nbsp; DESIGN &nbsp; | &nbsp; IDENTITY &nbsp; | &nbsp; 2026</div>
+</div>
+
+<script>
+    // 2. 初始化 EmailJS (請務必檢查此處是否為您的正確 Public Key)
+    (function(){
+        emailjs.init("X9BD_2FQwj7cnXNZM"); 
+    })();
+
+    let selectedPlan = { name: "", price: 0 };
+    let selectedAddons = [];
+
+    function selectPlan(price, name, el) {
+        document.querySelectorAll('.plan').forEach(b => b.classList.remove('active'));
+        el.classList.add('active');
+        selectedPlan = { name, price };
+    }
+
+    function toggleAddon(price, name, el) {
+        el.classList.toggle('active');
+        const index = selectedAddons.findIndex(a => a.name === name);
+        if (index > -1) selectedAddons.splice(index, 1);
+        else selectedAddons.push({ name, price });
+    }
+
+    async function fullAutomationProcess() {
+        const name = document.getElementById('inputName').value;
+        const email = document.getElementById('inputEmail').value;
+        const btn = document.getElementById('genBtn');
+
+        if(!name || !email || selectedPlan.price === 0) {
+            alert("請填寫姓名、電子郵件並選擇一個方案！");
+            return;
+        }
+
+        btn.innerText = "正在處理自動化流程 (PDF + Email)...";
+        btn.disabled = true;
+
+        try {
+            // --- 步驟 A: 更新 PDF 樣板內容 ---
+            document.getElementById('pdfName').innerText = name.toUpperCase();
+            document.getElementById('pdfEmail').innerText = email;
+            document.getElementById('pdfDate').innerText = new Date().toISOString().split('T')[0].replace(/-/g, '.');
+            
+            let total = selectedPlan.price;
+            let rows = `<tr><td>${selectedPlan.name}</td><td class="col-right">$${selectedPlan.price.toLocaleString()}</td></tr>`;
+            selectedAddons.forEach(a => {
+                total += a.price;
+                rows += `<tr><td style="color:#666; font-size:14px;">+ ${a.name}</td><td class="col-right">$${a.price.toLocaleString()}</td></tr>`;
+            });
+            document.getElementById('pdfItemsBody').innerHTML = rows;
+            document.getElementById('pdfTotal').innerText = total.toLocaleString();
+
+            // --- 步驟 B: 生成 PDF 檔案 ---
+            const template = document.getElementById('pdf-template');
+            template.style.left = "0";
+            template.style.position = "relative";
+
+            const canvas = await html2canvas(template, { 
+                scale: 3, 
+                useCORS: true, 
+                backgroundColor: "#FFFFFF",
+                logging: false
+            });
+            const imgData = canvas.toDataURL('image/jpeg', 1.0);
+            
+            template.style.left = "-9999px";
+            template.style.position = "absolute";
+
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+            
+            // 下載 PDF 給客戶
+            pdf.save(`IDEAL_QUOTE_${name.replace(/\s+/g, '_')}.pdf`);
+
+            // --- 步驟 C: 執行回傳系統 (發送 Email) ---
+            // 這裡將資料傳送到 EmailJS 模板
+            await emailjs.send("service_0r0svte", "template_gydfl1a", {
+                to_name: name,
+                to_email: email,
+                total_price: total.toLocaleString(),
+                details: selectedPlan.name + (selectedAddons.length > 0 ? " 等加購項目" : ""),
+                message: "正式報價單已下載完成，歡迎回覆此信件啟動合作。"
+            });
+
+            alert("✨ 報價單已成功寄送到客戶信箱！\n(請記得檢查您的副本信箱)");
+
+        } catch (error) {
+            console.error("發信失敗:", error);
+            alert("PDF 生成成功，但發信過程發生錯誤，請檢查網路或 ID 設定。");
+        } finally {
+            btn.innerText = "生成報價單並自動寄信給客戶 🚀";
+            btn.disabled = false;
+        }
+    }
+</script>
+
+</body>
+</html>
